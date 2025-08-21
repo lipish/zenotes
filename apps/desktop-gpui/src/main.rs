@@ -76,22 +76,48 @@ fn save_note(paths: &StorePaths, note: &Note) -> Result<()> {
     Ok(())
 }
 
-// Minimal gpui window placeholder
-#[cfg(not(target_os = "unknown"))]
+// Minimal run entry: without feature `gpui` we just do IO init/print
+#[cfg(all(not(target_os = "unknown"), not(feature = "gpui")))]
 fn main() -> Result<()> {
-    // TEMP: Resolve Mynotes root from env or default to ~/Documents/Mynotes
     let root = std::env::var("MYNOTES_DIR").ok().map(PathBuf::from).unwrap_or_else(|| {
         dirs::document_dir().unwrap_or(std::env::current_dir().unwrap()).join("Mynotes")
     });
     let paths = StorePaths::new(&root);
     ensure_dirs(&paths)?;
-
-    // Load metadata and print count (debug)
     let list = load_metadata(&paths)?;
     println!("Loaded {} notes from {}", list.len(), paths.root.display());
+    println!("Run with --features gpui to start the window UI");
+    Ok(())
+}
 
-    // TODO: Replace with real gpui window; keep placeholder for now to ensure build path
-    println!("Desktop GPUI skeleton initialized. Set MYNOTES_DIR to override folder.");
+// With `gpui` feature, open a simple window and show counts
+#[cfg(all(not(target_os = "unknown"), feature = "gpui"))]
+fn main() -> Result<()> {
+    use gpui::*;
+
+    let root = std::env::var("MYNOTES_DIR").ok().map(PathBuf::from).unwrap_or_else(|| {
+        dirs::document_dir().unwrap_or(std::env::current_dir().unwrap()).join("Mynotes")
+    });
+    let paths = StorePaths::new(&root);
+    ensure_dirs(&paths)?;
+    let list = load_metadata(&paths)?;
+
+    App::new().run(|cx| {
+        cx.open_window(WindowOptions::default(), |cx| {
+            let count = list.len();
+            let path_display = paths.root.display().to_string();
+            view! { cx,
+                vstack(|cx| {
+                    label(cx, format!("Mynotes: {} notes", count));
+                    label(cx, format!("Root: {}", path_display));
+                    button(cx, "Refresh", move |_, _| {
+                        // In next milestones we'll reload and render a list
+                    });
+                })
+            }
+        }).unwrap();
+    });
+
     Ok(())
 }
 

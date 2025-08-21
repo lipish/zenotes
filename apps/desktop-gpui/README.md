@@ -1,21 +1,29 @@
-# Desktop GPUI (zed-ui) Skeleton
+# Desktop GPUI (zed-ui) — Milestone 2
 
-This is a minimal Rust app prepared to integrate gpui/zed-ui. It uses a shared file-based store under a `Mynotes` folder:
+This milestone adds an optional GPUI window (feature-gated):
 
+- Default run performs file IO init and prints note counts
+- Run with `--features gpui` to start a simple window that shows note count and root path
+
+Store layout (shared with the web app's File System mode):
 - metadata.json — list of notes
 - notes/<id>.json — individual notes
 
-Run locally:
+Commands:
 
 ```
+# IO-only
 cargo run -p desktop-gpui
+
+# With gpui window
+cargo run -p desktop-gpui --features gpui
+
+# Custom Mynotes directory
+MYNOTES_DIR=/path/to/Mynotes cargo run -p desktop-gpui --features gpui
 ```
 
-To point at a specific directory:
-
-```
-MYNOTES_DIR=/path/to/Mynotes cargo run -p desktop-gpui
-```
-
-Note: gpui window UI will be added incrementally in the next milestone. This first step sets up file IO and project structure.
+Next steps:
+- Render list of notes in left panel
+- Open note in right editor pane; edit title/body and save
+- Basic keyboard shortcuts and refresh
 
