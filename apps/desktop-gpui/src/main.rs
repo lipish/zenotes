@@ -170,23 +170,46 @@ use gpui::{App as GApp, Application, Bounds, WindowOptions, WindowBounds, prelud
 struct RootView {
     count: usize,
     path: String,
+    titles: Vec<String>,
 }
 
 #[cfg(feature = "gpui")]
 impl Render for RootView {
     fn render(&mut self, _window: &mut Window, _cx: &mut GpuiContext<Self>) -> impl IntoElement {
-        div()
+        let mut container = div()
+            .flex()
+            .flex_row()
+            .gap_2()
+            .bg(rgb(0x303030))
+            .size(px(800.0))
+            .text_color(rgb(0xffffff));
+
+        let sidebar = {
+            let mut sb = div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .p_2()
+                .bg(rgb(0x383838))
+                .size(px(260.0));
+            sb = sb.child(format!("Notes ({}):", self.count));
+            for title in &self.titles {
+                sb = sb.child(div().p_1().bg(rgb(0x404040)).child(title.clone()));
+            }
+            sb
+        };
+
+        let content = div()
             .flex()
             .flex_col()
-            .gap_3()
-            .bg(rgb(0x303030))
+            .gap_2()
+            .p_2()
+            .bg(rgb(0x2b2b2b))
             .size(px(520.0))
-            .justify_center()
-            .items_start()
-            .text_lg()
-            .text_color(rgb(0xffffff))
-            .child(format!("Mynotes: {} notes", self.count))
-            .child(format!("Root: {}", self.path))
+            .child("Editor (WIP)")
+            .child(format!("Root: {}", self.path));
+
+        container.child(sidebar).child(content)
     }
 }
 
@@ -199,15 +222,17 @@ fn main() -> Result<()> {
     ensure_dirs(&paths)?;
     let list = load_metadata(&paths)?;
     let count = list.len();
+    let titles: Vec<String> = list.iter().map(|m| m.title.clone()).collect();
     let path_display = paths.root.display().to_string();
 
     Application::new().run(move |cx: &mut GApp| {
-        let bounds = Bounds::centered(None, size(px(560.0), px(220.0)), cx);
+        let bounds = Bounds::centered(None, size(px(840.0), px(480.0)), cx);
         let count2 = count;
+        let titles2 = titles.clone();
         let path2 = path_display.clone();
         cx.open_window(
             WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), ..Default::default() },
-            move |_, cx| cx.new(|_| RootView { count: count2, path: path2.clone() }),
+            move |_, cx| cx.new(|_| RootView { count: count2, path: path2.clone(), titles: titles2.clone() }),
         ).unwrap();
         cx.activate(true);
     });
