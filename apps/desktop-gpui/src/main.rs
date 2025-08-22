@@ -171,17 +171,18 @@ struct RootView {
     count: usize,
     path: String,
     titles: Vec<String>,
+    selected: Option<usize>,
 }
 
 #[cfg(feature = "gpui")]
 impl Render for RootView {
-    fn render(&mut self, _window: &mut Window, _cx: &mut GpuiContext<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut GpuiContext<Self>) -> impl IntoElement {
         let mut container = div()
             .flex()
             .flex_row()
             .gap_2()
             .bg(rgb(0x303030))
-            .size(px(800.0))
+            .size(px(900.0))
             .text_color(rgb(0xffffff));
 
         let sidebar = {
@@ -191,23 +192,58 @@ impl Render for RootView {
                 .gap_2()
                 .p_2()
                 .bg(rgb(0x383838))
-                .size(px(260.0));
-            sb = sb.child(format!("Notes ({}):", self.count));
-            for title in &self.titles {
-                sb = sb.child(div().p_1().bg(rgb(0x404040)).child(title.clone()));
+                .size(px(300.0));
+
+            // Header + Refresh
+            let refresh = div()
+                .p_1()
+                .bg(rgb(0x505050))
+                .child("Refresh")
+                .on_click(cx.listener(|this, _ev, _win, _cx| {
+                    // Reload titles from disk
+                    let paths = StorePaths::new(&this.path);
+                    if let Ok(list) = load_metadata(&paths) {
+                        this.count = list.len();
+                        this.titles = list.iter().map(|m| m.title.clone()).collect();
+                        this.selected = None;
+                    }
+                }));
+
+            sb = sb.child(format!("Notes ({}):", self.count)).child(refresh);
+
+            for (i, title) in self.titles.clone().into_iter().enumerate() {
+                let is_sel = self.selected == Some(i);
+                let row_bg = if is_sel { rgb(0x606060) } else { rgb(0x404040) };
+                sb = sb.child(
+                    div()
+                        .p_1()
+                        .bg(row_bg)
+                        .child(title.clone())
+                        .on_click(cx.listener(move |this, _ev, _win, _cx| {
+                            this.selected = Some(i);
+                        })),
+                );
             }
             sb
         };
 
-        let content = div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .p_2()
-            .bg(rgb(0x2b2b2b))
-            .size(px(520.0))
-            .child("Editor (WIP)")
-            .child(format!("Root: {}", self.path));
+        let content = {
+            let mut ct = div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .p_2()
+                .bg(rgb(0x2b2b2b))
+                .size(px(580.0))
+                .child("Editor (WIP) — selection/refresh wired");
+            if let Some(i) = self.selected {
+                if let Some(t) = self.titles.get(i) {
+                    ct = ct.child(format!("Selected: {}", t));
+                }
+            }
+            ct = ct.child(format!("Root: {}", self.path));
+            ct
+        };
 
         container.child(sidebar).child(content)
     }
@@ -232,7 +268,7 @@ fn main() -> Result<()> {
         let path2 = path_display.clone();
         cx.open_window(
             WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), ..Default::default() },
-            move |_, cx| cx.new(|_| RootView { count: count2, path: path2.clone(), titles: titles2.clone() }),
+            move |_, cx| cx.new(|_| RootView { count: count2, path: path2.clone(), titles: titles2.clone(), selected: None }),
         ).unwrap();
         cx.activate(true);
     });
