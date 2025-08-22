@@ -198,12 +198,16 @@ fn main() -> Result<()> {
     let paths = StorePaths::new(&root);
     ensure_dirs(&paths)?;
     let list = load_metadata(&paths)?;
+    let count = list.len();
+    let path_display = paths.root.display().to_string();
 
-    Application::new().run(|cx: &mut GApp| {
+    Application::new().run(move |cx: &mut GApp| {
         let bounds = Bounds::centered(None, size(px(560.0), px(220.0)), cx);
+        let count2 = count;
+        let path2 = path_display.clone();
         cx.open_window(
             WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), ..Default::default() },
-            |_, cx| cx.new(|_| RootView { count: list.len(), path: paths.root.display().to_string() }),
+            move |_, cx| cx.new(|_| RootView { count: count2, path: path2.clone() }),
         ).unwrap();
         cx.activate(true);
     });
