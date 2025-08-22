@@ -194,33 +194,37 @@ impl Render for RootView {
                 .bg(rgb(0x383838))
                 .size(px(300.0));
 
-            // Header + Refresh
-            let mut refresh = div()
+            // Header + Refresh (fluent API requires an element id to get a Stateful<Div>)
+            let refresh = div()
+                .id("refresh")
                 .p_1()
                 .bg(rgb(0x505050))
-                .child("Refresh");
-            refresh.on_click(cx.listener(|this, _ev, _win, _cx| {
-                // Reload titles from disk
-                let paths = StorePaths::new(&this.path);
-                if let Ok(list) = load_metadata(&paths) {
-                    this.count = list.len();
-                    this.titles = list.iter().map(|m| m.title.clone()).collect();
-                    this.selected = None;
-                }
-            }));
+                .cursor_pointer()
+                .child("Refresh")
+                .on_click(cx.listener(|this, _ev, _win, _cx| {
+                    // Reload titles from disk
+                    let paths = StorePaths::new(&this.path);
+                    if let Ok(list) = load_metadata(&paths) {
+                        this.count = list.len();
+                        this.titles = list.iter().map(|m| m.title.clone()).collect();
+                        this.selected = None;
+                    }
+                }));
 
             sb = sb.child(format!("Notes ({}):", self.count)).child(refresh);
 
             for (i, title) in self.titles.clone().into_iter().enumerate() {
                 let is_sel = self.selected == Some(i);
                 let row_bg = if is_sel { rgb(0x606060) } else { rgb(0x404040) };
-                let mut row = div()
+                let row = div()
+                    .id(format!("note-{}", i))
                     .p_1()
                     .bg(row_bg)
-                    .child(title.clone());
-                row.on_click(cx.listener(move |this, _ev, _win, _cx| {
-                    this.selected = Some(i);
-                }));
+                    .cursor_pointer()
+                    .child(title.clone())
+                    .on_click(cx.listener(move |this, _ev, _win, _cx| {
+                        this.selected = Some(i);
+                    }));
                 sb = sb.child(row);
             }
             sb
