@@ -195,34 +195,33 @@ impl Render for RootView {
                 .size(px(300.0));
 
             // Header + Refresh
-            let refresh = div()
+            let mut refresh = div()
                 .p_1()
                 .bg(rgb(0x505050))
-                .child("Refresh")
-                .on_click(cx.listener(|this, _ev, _win, _cx| {
-                    // Reload titles from disk
-                    let paths = StorePaths::new(&this.path);
-                    if let Ok(list) = load_metadata(&paths) {
-                        this.count = list.len();
-                        this.titles = list.iter().map(|m| m.title.clone()).collect();
-                        this.selected = None;
-                    }
-                }));
+                .child("Refresh");
+            refresh.on_click(cx.listener(|this, _ev, _win, _cx| {
+                // Reload titles from disk
+                let paths = StorePaths::new(&this.path);
+                if let Ok(list) = load_metadata(&paths) {
+                    this.count = list.len();
+                    this.titles = list.iter().map(|m| m.title.clone()).collect();
+                    this.selected = None;
+                }
+            }));
 
             sb = sb.child(format!("Notes ({}):", self.count)).child(refresh);
 
             for (i, title) in self.titles.clone().into_iter().enumerate() {
                 let is_sel = self.selected == Some(i);
                 let row_bg = if is_sel { rgb(0x606060) } else { rgb(0x404040) };
-                sb = sb.child(
-                    div()
-                        .p_1()
-                        .bg(row_bg)
-                        .child(title.clone())
-                        .on_click(cx.listener(move |this, _ev, _win, _cx| {
-                            this.selected = Some(i);
-                        })),
-                );
+                let mut row = div()
+                    .p_1()
+                    .bg(row_bg)
+                    .child(title.clone());
+                row.on_click(cx.listener(move |this, _ev, _win, _cx| {
+                    this.selected = Some(i);
+                }));
+                sb = sb.child(row);
             }
             sb
         };
