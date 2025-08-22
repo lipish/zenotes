@@ -83,8 +83,36 @@ fn load_note(paths: &StorePaths, id: &str) -> Result<Note> {
 
 fn save_note(paths: &StorePaths, note: &Note) -> Result<()> {
     let p = note_path(paths, &note.id);
-    fs::write(p, serde_json::to_vec_pretty(note)?)?;
+    fs::write(&p, serde_json::to_vec_pretty(note)?)?;
+
+    // Update metadata updatedAt/title if exists
+    let mut list = load_metadata(paths)?;
+    let mut found = false;
+    for m in &mut list {
+        if m.id == note.id {
+            m.updatedAt = note.updatedAt;
+            m.title = note.title.clone();
+            found = true;
+            break;
+        }
+    }
+    if found { save_metadata(paths, &list)?; }
+
     Ok(())
+}
+
+fn list_notes_sorted(paths: &StorePaths) -> Result<Vec<NoteMetadata>> {
+    let mut list = load_metadata(paths)?;
+    list.sort_by(|a, b| b.updatedAt.cmp(&a.updatedAt));
+    Ok(list)
+}
+
+fn update_note(paths: &StorePaths, mut note: Note, new_title: Option<&str>, new_content: Option<serde_json::Value>) -> Result<Note> {
+    if let Some(t) = new_title { note.title = t.to_string(); }
+    if let Some(c) = new_content { note.content = c; }
+    note.updatedAt = Utc::now();
+    save_note(paths, &note)?;
+    Ok(note)
 }
 
 fn create_note(paths: &StorePaths, title: &str) -> Result<Note> {
@@ -101,9 +129,10 @@ fn create_note(paths: &StorePaths, title: &str) -> Result<Note> {
         tags: Some(vec![]),
         category: Some(String::new()),
     };
-    save_note(paths, &note)?;
+    // Persist file first
+    fs::write(note_path(paths, &note.id), serde_json::to_vec_pretty(&note)?)?;
 
-    // Append metadata
+    // Append metadata then write
     let mut list = load_metadata(paths)?;
     list.push(NoteMetadata { id, title: title.to_string(), createdAt: now, updatedAt: now, tags: Some(vec![]), category: Some(String::new()) });
     save_metadata(paths, &list)?;
@@ -133,11 +162,9 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-// With `gpui` feature, open a simple window and show counts
+// With `gpui` feature, compile with gpui available but use a minimal placeholder
 #[cfg(all(not(target_os = "unknown"), feature = "gpui"))]
 fn main() -> Result<()> {
-    use gpui::*;
-
     let root = std::env::var("MYNOTES_DIR").ok().map(PathBuf::from).unwrap_or_else(|| {
         dirs::document_dir().unwrap_or(std::env::current_dir().unwrap()).join("Mynotes")
     });
@@ -145,34 +172,14 @@ fn main() -> Result<()> {
     ensure_dirs(&paths)?;
     let list = load_metadata(&paths)?;
 
-    App::new().run(|cx| {
-        cx.open_window(WindowOptions::default().with_title("Mynotes GPUI"), move |cx| {
-            let count = list.len();
-            let path_display = paths.root.display().to_string();
-            view! { cx,
-                hstack(|cx| {
-                    vstack(|cx| {
-                        label(cx, "Notes");
-                        label(cx, format!("{} items", count));
-                        button(cx, "New", move |_, _| {
-                            // TODO: create and refresh
-                        });
-                        button(cx, "Delete", move |_, _| {
-                            // TODO: delete selected
-                        });
-                    }).class("sidebar");
+    // Touch gpui types to ensure the feature links correctly without relying on unstable APIs
+    let _opts = gpui::WindowOptions::default();
 
-                    vstack(|cx| {
-                        label(cx, "Editor");
-                        label(cx, format!("Root: {}", path_display));
-                        button(cx, "Refresh", move |_, _| {
-                            // TODO: reload metadata and current note
-                        });
-                    }).class("content");
-                })
-            }
-        }).unwrap();
-    });
+    println!(
+        "GPUI feature enabled. Loaded {} notes from {}. Minimal placeholder running; UI wiring to follow.",
+        list.len(),
+        paths.root.display()
+    );
 
     Ok(())
 }
