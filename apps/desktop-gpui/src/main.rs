@@ -167,10 +167,13 @@ fn main() -> Result<()> {
 use gpui::{App as GApp, Application, Bounds, WindowOptions, WindowBounds, prelude::*, div, size, px, rgb, Window, Context as GpuiContext, Render, IntoElement};
 
 #[cfg(feature = "gpui")]
+#[derive(Clone)]
+struct UIItem { id: String, title: String, updated: DateTime<Utc> }
+
+#[cfg(feature = "gpui")]
 struct RootView {
-    count: usize,
     path: String,
-    titles: Vec<String>,
+    items: Vec<UIItem>,
     selected: Option<usize>,
 }
 
@@ -194,32 +197,48 @@ impl Render for RootView {
                 .bg(rgb(0x383838))
                 .size(px(300.0));
 
-            // Header + Refresh (imperative on_click via interactivity)
-            let mut refresh = div()
-                .p_1()
-                .bg(rgb(0x505050))
-                .cursor_pointer()
-                .child("Refresh");
+            // Header row with New / Delete / Refresh
+            let mut new_btn = div().p_1().bg(rgb(0x4a7a4a)).cursor_pointer().child("New");
+            new_btn.interactivity().on_click(cx.listener(|this, _ev, _win, _cx| {
+                let paths = StorePaths::new(PathBuf::from(&this.path));
+                if let Ok(note) = create_note(&paths, "Untitled") {
+                    if let Ok(list) = load_metadata(&paths) {
+                        this.items = list.iter().map(|m| UIItem { id: m.id.clone(), title: m.title.clone(), updated: m.updatedAt }).collect();
+                        this.selected = this.items.iter().position(|it| it.id == note.id);
+                    }
+                }
+            }));
+
+            let mut del_btn = div().p_1().bg(rgb(0x7a4a4a)).cursor_pointer().child("Delete");
+            del_btn.interactivity().on_click(cx.listener(|this, _ev, _win, _cx| {
+                if let Some(i) = this.selected {
+                    if let Some(it) = this.items.get(i).cloned() {
+                        let paths = StorePaths::new(PathBuf::from(&this.path));
+                        let _ = delete_note(&paths, &it.id);
+                        if let Ok(list) = load_metadata(&paths) {
+                            this.items = list.iter().map(|m| UIItem { id: m.id.clone(), title: m.title.clone(), updated: m.updatedAt }).collect();
+                            this.selected = None;
+                        }
+                    }
+                }
+            }));
+
+            let mut refresh = div().p_1().bg(rgb(0x505050)).cursor_pointer().child("Refresh");
             refresh.interactivity().on_click(cx.listener(|this, _ev, _win, _cx| {
-                // Reload titles from disk
-                let paths = StorePaths::new(&this.path);
+                let paths = StorePaths::new(PathBuf::from(&this.path));
                 if let Ok(list) = load_metadata(&paths) {
-                    this.count = list.len();
-                    this.titles = list.iter().map(|m| m.title.clone()).collect();
+                    this.items = list.iter().map(|m| UIItem { id: m.id.clone(), title: m.title.clone(), updated: m.updatedAt }).collect();
                     this.selected = None;
                 }
             }));
 
-            sb = sb.child(format!("Notes ({}):", self.count)).child(refresh);
+            sb = sb.child(div().flex().gap_2().child(new_btn).child(del_btn).child(refresh));
+            sb = sb.child(format!("Notes ({}):", self.items.len()));
 
-            for (i, title) in self.titles.clone().into_iter().enumerate() {
+            for (i, item) in self.items.clone().into_iter().enumerate() {
                 let is_sel = self.selected == Some(i);
                 let row_bg = if is_sel { rgb(0x606060) } else { rgb(0x404040) };
-                let mut row = div()
-                    .p_1()
-                    .bg(row_bg)
-                    .cursor_pointer()
-                    .child(title.clone());
+                let mut row = div().p_1().bg(row_bg).cursor_pointer().child(item.title.clone());
                 row.interactivity().on_click(cx.listener(move |this, _ev, _win, _cx| {
                     this.selected = Some(i);
                 }));
@@ -236,10 +255,10 @@ impl Render for RootView {
                 .p_2()
                 .bg(rgb(0x2b2b2b))
                 .size(px(580.0))
-                .child("Editor (WIP) — selection/refresh wired");
+                .child("Editor (WIP) — selection/refresh/new/delete wired");
             if let Some(i) = self.selected {
-                if let Some(t) = self.titles.get(i) {
-                    ct = ct.child(format!("Selected: {}", t));
+                if let Some(it) = self.items.get(i) {
+                    ct = ct.child(format!("Selected: {}", it.title));
                 }
             }
             ct = ct.child(format!("Root: {}", self.path));
@@ -258,18 +277,16 @@ fn main() -> Result<()> {
     let paths = StorePaths::new(&root);
     ensure_dirs(&paths)?;
     let list = load_metadata(&paths)?;
-    let count = list.len();
-    let titles: Vec<String> = list.iter().map(|m| m.title.clone()).collect();
+    let items: Vec<UIItem> = list.into_iter().map(|m| UIItem { id: m.id, title: m.title, updated: m.updatedAt }).collect();
     let path_display = paths.root.display().to_string();
 
     Application::new().run(move |cx: &mut GApp| {
         let bounds = Bounds::centered(None, size(px(840.0), px(480.0)), cx);
-        let count2 = count;
-        let titles2 = titles.clone();
+        let items2 = items.clone();
         let path2 = path_display.clone();
         cx.open_window(
             WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), ..Default::default() },
-            move |_, cx| cx.new(|_| RootView { count: count2, path: path2.clone(), titles: titles2.clone(), selected: None }),
+            move |_, cx| cx.new(|_| RootView { path: path2.clone(), items: items2.clone(), selected: None }),
         ).unwrap();
         cx.activate(true);
     });
