@@ -162,7 +162,34 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-// With `gpui` feature, compile with gpui available but use a minimal placeholder
+// With `gpui` feature, open a simple window using current gpui API from zed monorepo
+#[cfg(feature = "gpui")]
+use gpui::{App as GApp, Application, Bounds, WindowOptions, WindowBounds, prelude::*, div, size, px, rgb, Window, Context as GpuiContext, Render, IntoElement};
+
+#[cfg(feature = "gpui")]
+struct RootView {
+    count: usize,
+    path: String,
+}
+
+#[cfg(feature = "gpui")]
+impl Render for RootView {
+    fn render(&mut self, _window: &mut Window, _cx: &mut GpuiContext<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .bg(rgb(0x303030))
+            .size(px(520.0))
+            .justify_center()
+            .items_start()
+            .text_lg()
+            .text_color(rgb(0xffffff))
+            .child(format!("Mynotes: {} notes", self.count))
+            .child(format!("Root: {}", self.path))
+    }
+}
+
 #[cfg(all(not(target_os = "unknown"), feature = "gpui"))]
 fn main() -> Result<()> {
     let root = std::env::var("MYNOTES_DIR").ok().map(PathBuf::from).unwrap_or_else(|| {
@@ -172,14 +199,14 @@ fn main() -> Result<()> {
     ensure_dirs(&paths)?;
     let list = load_metadata(&paths)?;
 
-    // Touch gpui types to ensure the feature links correctly without relying on unstable APIs
-    let _opts = gpui::WindowOptions::default();
-
-    println!(
-        "GPUI feature enabled. Loaded {} notes from {}. Minimal placeholder running; UI wiring to follow.",
-        list.len(),
-        paths.root.display()
-    );
+    Application::new().run(|cx: &mut GApp| {
+        let bounds = Bounds::centered(None, size(px(560.0), px(220.0)), cx);
+        cx.open_window(
+            WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), ..Default::default() },
+            |_, cx| cx.new(|_| RootView { count: list.len(), path: paths.root.display().to_string() }),
+        ).unwrap();
+        cx.activate(true);
+    });
 
     Ok(())
 }
