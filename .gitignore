@@ -46,3 +46,7 @@ next-env.d.ts
 **/target/
 Cargo.lock
 !.github/**
+
+
+# web static images (note images are stored outside repo now)
+/public/images/

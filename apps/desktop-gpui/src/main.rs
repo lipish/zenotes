@@ -165,6 +165,10 @@ fn main() -> Result<()> {
 // With `gpui` feature, open a simple window using current gpui API from zed monorepo
 #[cfg(feature = "gpui")]
 use gpui::{App as GApp, Application, Bounds, WindowOptions, WindowBounds, prelude::*, div, size, px, rgb, Window, Context as GpuiContext, Render, IntoElement};
+#[cfg(all(feature = "gpui", feature = "ui_input"))]
+use ui_input::SingleLineInput;
+#[cfg(all(feature = "gpui", feature = "ui_input"))]
+use editor::{Editor, EditorElement, EditorStyle};
 
 #[cfg(feature = "gpui")]
 #[derive(Clone)]
@@ -175,12 +179,16 @@ struct RootView {
     path: String,
     items: Vec<UIItem>,
     selected: Option<usize>,
+    #[cfg(all(feature = "gpui", feature = "ui_input"))]
+    title_input: gpui::Entity<SingleLineInput>,
+    #[cfg(all(feature = "gpui", feature = "ui_input"))]
+    body_editor: gpui::Entity<Editor>,
 }
 
 #[cfg(feature = "gpui")]
 impl Render for RootView {
     fn render(&mut self, _window: &mut Window, cx: &mut GpuiContext<Self>) -> impl IntoElement {
-        let mut container = div()
+        let container = div()
             .flex()
             .flex_row()
             .gap_2()
@@ -241,6 +249,34 @@ impl Render for RootView {
                 let mut row = div().p_1().bg(row_bg).cursor_pointer().child(item.title.clone());
                 row.interactivity().on_click(cx.listener(move |this, _ev, _win, _cx| {
                     this.selected = Some(i);
+                    // Load note and populate inputs immediately
+                    let paths = StorePaths::new(PathBuf::from(&this.path));
+                    if let Some(it) = this.items.get(i).cloned() {
+                        if let Ok(note) = load_note(&paths, &it.id) {
+                            #[cfg(all(feature = "gpui", feature = "ui_input"))]
+                            {
+                                let title = note.title.clone();
+                                let title_for_update = title.clone();
+                                this.title_input.update(_cx, |input, cx2| {
+                                    let ed = input.editor();
+                                    ed.update(cx2, |editor, cx3| editor.set_text(title_for_update, _win, cx3));
+                                });
+                                let body_text = note
+                                    .content
+                                    .as_array()
+                                    .and_then(|arr| arr.get(0))
+                                    .and_then(|node| node.get("children"))
+                                    .and_then(|ch| ch.as_array())
+                                    .and_then(|charr| charr.get(0))
+                                    .and_then(|leaf| leaf.get("text"))
+                                    .and_then(|t| t.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let body_for_update = body_text.clone();
+                                this.body_editor.update(_cx, |ed, cx2| ed.set_text(body_for_update, _win, cx2));
+                            }
+                        }
+                    }
                 }));
                 sb = sb.child(row);
             }
@@ -253,12 +289,76 @@ impl Render for RootView {
                 .flex_col()
                 .gap_2()
                 .p_2()
-                .bg(rgb(0x2b2b2b))
+                .bg(rgb(0xffffff))
+                .text_color(rgb(0x000000))
                 .size(px(580.0))
-                .child("Editor (WIP) — selection/refresh/new/delete wired");
+                .child("Editor — title/body (WIP)");
+
+            // Title input + Body editor (ui_input/editor) + Save
+            #[cfg(all(feature = "gpui", feature = "ui_input"))]
+            {
+                // Render title input
+                ct = ct.child(div().child(self.title_input.clone()));
+                // Render body editor with basic style
+                let text_style = gpui::TextStyle { color: rgb(0x000000).into(), ..Default::default() };
+                let editor_style = EditorStyle { background: rgb(0xf7f7f7).into(), text: text_style, ..Default::default() };
+                ct = ct.child(div().min_h(px(200.0)).child(EditorElement::new(&self.body_editor, editor_style)));
+            }
+
+            let mut save_btn = div().p_1().bg(rgb(0x4a7a4a)).cursor_pointer().child("Save");
+            save_btn.interactivity().on_click(cx.listener(|this, _ev, _win, _cx| {
+                if let Some(i) = this.selected {
+                    if let Some(it) = this.items.get(i).cloned() {
+                        let paths = StorePaths::new(PathBuf::from(&this.path));
+                        if let Ok(mut note) = load_note(&paths, &it.id) {
+                            // If ui_input is enabled, read title/body from inputs
+                            #[cfg(all(feature = "gpui", feature = "ui_input"))]
+                            {
+                                // Title
+                                let title_text = this.title_input.read(_cx).text(_cx);
+                                if !title_text.is_empty() {
+                                    note.title = title_text;
+                                }
+                                // Body (plain text -> JSON paragraph for now)
+                                let body_text = this.body_editor.read(_cx).text(_cx);
+                                if !body_text.is_empty() {
+                                    note.content = serde_json::json!([
+                                        {"type": "paragraph", "children": [{"text": body_text}]}
+                                    ]);
+                                }
+                            }
+                            note.updatedAt = Utc::now();
+                            let _ = save_note(&paths, &note);
+                            if let Ok(list) = load_metadata(&paths) {
+                                this.items = list
+                                    .iter()
+                                    .map(|m| UIItem { id: m.id.clone(), title: m.title.clone(), updated: m.updatedAt })
+                                    .collect();
+                            }
+                        }
+                    }
+                }
+            }));
+
+            // Show title input if available
+            #[cfg(all(feature = "gpui", feature = "ui_input"))]
+            {
+                ct = ct.child(div().child(self.title_input.clone()));
+            }
+
+            ct = ct.child(div().flex().gap_2().child(save_btn));
+
             if let Some(i) = self.selected {
                 if let Some(it) = self.items.get(i) {
                     ct = ct.child(format!("Selected: {}", it.title));
+                    // Load note content into inputs/editors
+                    let paths = StorePaths::new(PathBuf::from(&self.path));
+                    if let Ok(note) = load_note(&paths, &it.id) {
+                        #[cfg(all(feature = "gpui", feature = "ui_input"))]
+                        {
+                            // Note content now populated on row click to avoid nested cx borrows
+                        }
+                    }
                 }
             }
             ct = ct.child(format!("Root: {}", self.path));
@@ -286,7 +386,21 @@ fn main() -> Result<()> {
         let path2 = path_display.clone();
         cx.open_window(
             WindowOptions { window_bounds: Some(WindowBounds::Windowed(bounds)), ..Default::default() },
-            move |_, cx| cx.new(|_| RootView { path: path2.clone(), items: items2.clone(), selected: None }),
+            move |window, cx| cx.new(|cx| {
+                #[cfg(all(feature = "gpui", feature = "ui_input"))]
+                let title_input = cx.new(|cx| SingleLineInput::new(window, cx, "Title").label("Title"));
+                #[cfg(all(feature = "gpui", feature = "ui_input"))]
+                let body_editor = cx.new(|cx| Editor::multi_line(window, cx));
+                RootView {
+                    path: path2.clone(),
+                    items: items2.clone(),
+                    selected: None,
+                    #[cfg(all(feature = "gpui", feature = "ui_input"))]
+                    title_input,
+                    #[cfg(all(feature = "gpui", feature = "ui_input"))]
+                    body_editor,
+                }
+            }),
         ).unwrap();
         cx.activate(true);
     });
