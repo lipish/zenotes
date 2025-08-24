@@ -192,9 +192,10 @@ impl Render for RootView {
             .flex()
             .flex_row()
             .gap_2()
-            .bg(rgb(0x303030))
-            .size(px(900.0))
-            .text_color(rgb(0xffffff));
+            .bg(rgb(0xf0f0f0))
+            .w_full()
+            .h_full()
+            .text_color(rgb(0x000000));
 
         let sidebar = {
             let mut sb = div()
@@ -202,8 +203,11 @@ impl Render for RootView {
                 .flex_col()
                 .gap_2()
                 .p_2()
-                .bg(rgb(0x383838))
-                .size(px(300.0));
+                .bg(rgb(0xeeeeee))
+                .text_color(rgb(0x000000))
+                .size(px(320.0))
+                .flex_shrink_0()
+                .h_full();
 
             // Header row with New / Delete / Refresh
             let mut new_btn = div().p_1().bg(rgb(0x4a7a4a)).cursor_pointer().child("New");
@@ -291,7 +295,9 @@ impl Render for RootView {
                 .p_2()
                 .bg(rgb(0xffffff))
                 .text_color(rgb(0x000000))
-                .size(px(580.0))
+                .flex_1()
+                .min_w(px(0.0))
+                .h_full()
                 .child("Editor — title/body (WIP)");
 
             // Title input + Body editor (ui_input/editor) + Save
@@ -299,10 +305,17 @@ impl Render for RootView {
             {
                 // Render title input
                 ct = ct.child(div().child(self.title_input.clone()));
-                // Render body editor with basic style
+                // Render body editor with basic style，并占据剩余空间
                 let text_style = gpui::TextStyle { color: rgb(0x000000).into(), ..Default::default() };
-                let editor_style = EditorStyle { background: rgb(0xf7f7f7).into(), text: text_style, ..Default::default() };
-                ct = ct.child(div().min_h(px(200.0)).child(EditorElement::new(&self.body_editor, editor_style)));
+                let editor_style = EditorStyle { background: rgb(0xfdfdfd).into(), text: text_style, ..Default::default() };
+                ct = ct.child(
+                    div()
+                        .flex()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .h_full()
+                        .child(EditorElement::new(&self.body_editor, editor_style))
+                );
             }
 
             let mut save_btn = div().p_1().bg(rgb(0x4a7a4a)).cursor_pointer().child("Save");
@@ -381,7 +394,15 @@ fn main() -> Result<()> {
     let path_display = paths.root.display().to_string();
 
     Application::new().run(move |cx: &mut GApp| {
-        let bounds = Bounds::centered(None, size(px(840.0), px(480.0)), cx);
+        // Provide required global state for Zed components (SettingsStore)
+        #[cfg(all(feature = "gpui", feature = "ui_input"))]
+        {
+            use settings::SettingsStore;
+            // Register SettingsStore globally so language/editor crates can access it
+            let store = SettingsStore::new(cx);
+            cx.set_global(store);
+        }
+        let bounds = Bounds::centered(None, size(px(900.0), px(1100.0)), cx);
         let items2 = items.clone();
         let path2 = path_display.clone();
         cx.open_window(
